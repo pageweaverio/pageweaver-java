@@ -1,110 +1,91 @@
 package io.pageweaver;
 
-import com.google.gson.Gson;
-import com.google.gson.reflect.TypeToken;
-
-import java.io.IOException;
-import java.lang.reflect.Type;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.time.Duration;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-
-/** Client for the PageWeaver document-generation API. */
+/**
+ * The PageWeaver API client. Resources are exposed via accessor methods; each returns a cached instance.
+ *
+ * <pre>{@code
+ * PageWeaver pw = new PageWeaver(System.getenv("PAGEWEAVER_API_KEY"));
+ * Map<String, Object> doc = pw.documents().createAndWait(
+ *     Map.of("templateId", "tmpl_invoice", "payload", Map.of("total", 42)),
+ *     new WaitOptions());
+ * byte[] pdf = pw.documents().download((String) doc.get("id"));
+ * }</pre>
+ */
 public final class PageWeaver {
 
-    private static final String DEFAULT_BASE_URL = "https://api.pageweaver.io";
-    private static final List<String> TERMINAL = Arrays.asList("done", "failed", "error");
-    private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {}.getType();
+    private final Http http;
 
-    private final String apiKey;
-    private final String baseUrl;
-    private final HttpClient http;
-    private final Gson gson = new Gson();
+    private final Documents documents;
+    private final Templates templates;
+    private final Schemas schemas;
+    private final Usage usage;
+    private final Comments comments;
+    private final Reviews reviews;
+    private final ShareLinks shareLinks;
+    private final Environments environments;
+    private final Deployments deployments;
 
+    /** Create a client against the default base URL ({@code https://api.pageweaver.io}). */
     public PageWeaver(String apiKey) {
-        this(apiKey, DEFAULT_BASE_URL);
+        this(apiKey, Http.DEFAULT_BASE_URL);
     }
 
+    /** Create a client against a custom base URL (e.g. {@code http://localhost:4000} in dev). */
     public PageWeaver(String apiKey, String baseUrl) {
-        if (apiKey == null || apiKey.isEmpty()) {
-            throw new IllegalArgumentException("apiKey is required");
-        }
-        this.apiKey = apiKey;
-        this.baseUrl = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-        this.http = HttpClient.newHttpClient();
+        this.http = new Http(apiKey, baseUrl);
+        this.documents = new Documents(http);
+        this.templates = new Templates(http);
+        this.schemas = new Schemas(http);
+        this.usage = new Usage(http);
+        this.comments = new Comments(http);
+        this.reviews = new Reviews(http);
+        this.shareLinks = new ShareLinks(http);
+        this.environments = new Environments(http);
+        this.deployments = new Deployments(http);
     }
 
-    /** POST /v1/documents. Pass the request body per the API docs. */
-    public Map<String, Object> createDocument(Map<String, Object> body) {
-        return request("POST", "/v1/documents", body);
+    /** Operations on documents: the core of the API. */
+    public Documents documents() {
+        return documents;
     }
 
-    /** GET /v1/documents/:id. */
-    public Map<String, Object> getDocument(String id) {
-        return request("GET", "/v1/documents/" + id, null);
+    /** Read-only discovery of templates + pinnable versions; {@code templates().proposals()} for the PR flow. */
+    public Templates templates() {
+        return templates;
     }
 
-    /** Create a document and poll until it reaches a terminal state. */
-    public Map<String, Object> createAndWait(Map<String, Object> body, Duration pollInterval, Duration timeout) {
-        Map<String, Object> created = createDocument(body);
-        Object id = created.get("id");
-        if (!(id instanceof String) || ((String) id).isEmpty()) {
-            return created;
-        }
-        long deadline = System.nanoTime() + timeout.toNanos();
-        while (true) {
-            Map<String, Object> doc = getDocument((String) id);
-            Object status = doc.get("status");
-            if (status instanceof String && TERMINAL.contains(status)) {
-                return doc;
-            }
-            if (System.nanoTime() >= deadline) {
-                throw new PageWeaverException("Timed out waiting for document " + id);
-            }
-            try {
-                Thread.sleep(pollInterval.toMillis());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new PageWeaverException("Interrupted while waiting for document " + id);
-            }
-        }
+    /** Read-only discovery of the JSON Schemas your payloads validate against. */
+    public Schemas schemas() {
+        return schemas;
     }
 
-    private Map<String, Object> request(String method, String path, Map<String, Object> body) {
-        HttpRequest.Builder builder = HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + path))
-                .header("x-api-key", apiKey)
-                .header("Accept", "application/json")
-                .timeout(Duration.ofSeconds(30));
+    /** Current-period page usage against the plan quota. */
+    public Usage usage() {
+        return usage;
+    }
 
-        if (body != null) {
-            builder.header("Content-Type", "application/json");
-            builder.method(method, HttpRequest.BodyPublishers.ofString(gson.toJson(body)));
-        } else {
-            builder.method(method, HttpRequest.BodyPublishers.noBody());
-        }
+    /** Anchored comment threads on documents (requires a {@code review}-scoped key for writes). */
+    public Comments comments() {
+        return comments;
+    }
 
-        try {
-            HttpResponse<String> resp = http.send(builder.build(), HttpResponse.BodyHandlers.ofString());
-            String raw = resp.body();
-            int status = resp.statusCode();
-            if (status < 200 || status >= 300) {
-                throw new PageWeaverException(method + " " + path + " failed with status " + status, status, raw);
-            }
-            if (raw == null || raw.isEmpty()) {
-                return Map.of();
-            }
-            return gson.fromJson(raw, MAP_TYPE);
-        } catch (IOException e) {
-            throw new PageWeaverException("HTTP request failed: " + e.getMessage());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new PageWeaverException("HTTP request interrupted: " + e.getMessage());
-        }
+    /** Review requests + approvals on documents (requires a {@code review}-scoped key for writes). */
+    public Reviews reviews() {
+        return reviews;
+    }
+
+    /** Capability-scoped external share links (requires a {@code review}-scoped key). */
+    public ShareLinks shareLinks() {
+        return shareLinks;
+    }
+
+    /** Named per-account environments + pins over template versions (requires a {@code deploy}-scoped key for writes). */
+    public Environments environments() {
+        return environments;
+    }
+
+    /** Plan documents-as-code deployments from a manifest (requires a {@code deploy}-scoped key for writes). */
+    public Deployments deployments() {
+        return deployments;
     }
 }

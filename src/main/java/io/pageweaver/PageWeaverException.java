@@ -1,6 +1,6 @@
 package io.pageweaver;
 
-/** Raised when the API returns a non-2xx response, or the request fails. */
+/** Raised when the API returns a non-2xx response, or the request fails. Base for all SDK errors. */
 public class PageWeaverException extends RuntimeException {
 
     private final Integer statusCode;
