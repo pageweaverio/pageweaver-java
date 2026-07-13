@@ -42,8 +42,13 @@ public final class Proposals {
 
     /** Re-run the render-diff regression. Returns {@code 202}. */
     public Map<String, Object> rerunChecks(String templateId, String proposalId) {
+        return rerunChecks(templateId, proposalId, null);
+    }
+
+    /** Re-run the render-diff regression with an optional policy body. Returns {@code 202}. */
+    public Map<String, Object> rerunChecks(String templateId, String proposalId, Map<String, Object> body) {
         return http.request("POST", base(templateId) + "/" + Http.enc(proposalId) + "/checks",
-                null, null, null, false);
+                null, body, null, false);
     }
 
     /** Append an approval decision. Returns {@code 201}. */
