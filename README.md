@@ -74,6 +74,32 @@ byte[] bytes = pw.documents().download(id, "the-download-password");
 `PageWeaverTimeoutException`; on a failed document they throw `PageWeaverDocumentFailedException`
 (unless `throwOnFailure(false)`).
 
+### Archival PDF/A
+
+```java
+Map<String, Object> doc = pw.documents().createAndWait(Map.of(
+    "templateId", "tmpl_invoice",
+    "payload", Map.of("number", "INV-001"),
+    "output", Map.of("pdfa", "3b")   // "2b" | "3b" | "none"
+), new WaitOptions());
+System.out.println(doc.get("pdfa"));           // "3b"
+System.out.println(doc.get("outputNotices"));  // what had to change to honor the request
+```
+
+`2b` and `3b` produce a validated PDF/A. (`1b` is not offered: the conversion cannot produce one that
+passes validation.) Send `"none"` to opt out of a template that defaults to archival output.
+
+Three things change, and two are invisible in the produced document:
+
+- **Links stop working.** Every clickable link annotation is dropped.
+- **Some text stops being extractable.** Text set with OpenType feature substitution, most commonly
+  `font-variant-numeric: tabular-nums`, looks identical but can no longer be selected, searched, or
+  copied. A PDF/A document is therefore **not** a machine-readability guarantee.
+- **`Author` is not written**, because PDF/A cannot record it conformantly.
+
+It cannot be combined with an image format, a PDF open-password, a digital signature, or a `url`
+render, and it adds roughly 200ms plus 25ms per page.
+
 ## Templates, proposals, and schemas
 
 ```java
