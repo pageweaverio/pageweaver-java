@@ -41,6 +41,14 @@ public final class Documents {
         return http.request("GET", "/v1/documents/" + Http.enc(id) + "/verify", null, null, null, false);
     }
 
+    /**
+     * Fetch a document's PDF/UA-1 conformance report: the validator's verdict, every failed rule with
+     * its ISO 14289-1 clause, and what the pipeline adjusted to make the document conformant.
+     */
+    public Map<String, Object> accessibility(String id) {
+        return http.request("GET", "/v1/documents/" + Http.enc(id) + "/accessibility", null, null, null, false);
+    }
+
     /** One page of the document history, newest first. Use {@code nextCursor} to page. */
     public Map<String, Object> list(Map<String, Object> params) {
         Map<String, Object> query = new HashMap<>();
